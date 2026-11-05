@@ -74,13 +74,4 @@ multiline comment
 # userInputCityCode = input("Enter your city code: ")
 # print("userInputCityCode: ", userInputCityCode, "type: ", type(userInputCityCode))
 
-def sum(a,b):
-    return a + b
-
-result = sum(5,7)
-# print(result) 
-
-square = lambda n: n * b
-
-# print(square(5))  # 25
 
