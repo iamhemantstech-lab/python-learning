@@ -1,0 +1,8 @@
+Model: A Python class representing a database table.
+Table: The actual structure stored inside MySQL.
+Column: A field inside that table.
+Row: An individual record stored in that table.
+
+
+Q1. What is SQLAlchemy ORM?
+SQLAlchemy ORM allows us to interact with database tables using Python classes and objects instead of writing SQL queries for every operation.
