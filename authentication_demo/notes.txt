@@ -6,3 +6,102 @@ Row: An individual record stored in that table.
 
 Q1. What is SQLAlchemy ORM?
 SQLAlchemy ORM allows us to interact with database tables using Python classes and objects instead of writing SQL queries for every operation.
+
+
+
+Q2. What is `yield` in FastAPI Database Dependency (`get_db`)?
+- `yield` turns a standard Python function into a Generator.
+- In FastAPI, `yield` acts as a "Pause & Resume" mechanism for managing resource lifecycles (like database connections).
+
+How `yield` works in `get_db()` step-by-step:
+1. SETUP:
+   Before the route runs, `get_db()` calls `db = LocalSession()`, borrowing a connection from the MySQL connection pool.
+2. PAUSE & INJECT:
+   `yield db` pauses `get_db()` in memory and injects the active `db` session into the route function (e.g., `login(..., db: Session = Depends(get_db))`).
+3. EXECUTION:
+   The route function executes all its database queries (finding user, saving tokens, etc.) using that single open session.
+4. RESUME & CLEANUP:
+   Only after the entire route finishes and sends the HTTP response (or even if an unhandled error crashes the endpoint), FastAPI returns control to `get_db()` right after the `yield`.
+5. The `finally: db.close()` block executes, safely closing the session and returning the connection back to the MySQL pool.
+
+Why use `yield` instead of `return`?
+- `return` exits a function permanently. Any code written after `return` (like `db.close()`) would never execute!
+- `yield` allows code to run BOTH BEFORE the request (setup) and AFTER the request (cleanup).
+
+Key Benefit:
+- Guarantees 100% cleanup, completely preventing Database Connection Leaks ("Too many connections" errors in MySQL).
+
+
+================================================================================
+FASTAPI & SQLALCHEMY INTERVIEW STUDY GUIDE & CONCEPTUAL NOTES
+================================================================================
+
+Q3. What is `db: Session = Depends(get_db)`?
+- Concept: Dependency Injection (DI).
+- Breakdown:
+  1. `db`: The local variable name inside your function.
+  2. `: Session`: Type hint from `sqlalchemy.orm`. Gives IDE autocomplete for `.query()`, `.add()`, `.commit()`.
+  3. `= Depends(get_db)`: Instructs FastAPI to execute `get_db()`, borrow a MySQL session from the pool, inject it into the function, and ensure `finally: db.close()` runs after the request completes.
+- Key Interview Value:
+  - Guarantees zero connection leaks.
+  - Enables unit testing by mocking `get_db` without modifying route code.
+
+
+Q4. Explain core FastAPI imports: APIRouter, Depends, HTTPException, status, Response, Cookie
+1. `APIRouter`:
+   - A modular mini-FastAPI router used to split large applications into separate files (e.g., `routers/auth.py`, `routers/users.py`).
+   - Equivalent to `express.Router()` in Node.js.
+   - Allows shared prefixes (`prefix="/auth"`), tags, and shared dependencies.
+2. `Depends`:
+   - Declares a dependency in FastAPI.
+   - Tells FastAPI to execute a function/service first and inject its return value into the route parameter.
+3. `HTTPException`:
+   - A standard exception class used to interrupt execution immediately and return an HTTP error response to the client (e.g. 401, 404, 409) with a JSON `{ "detail": "message" }`.
+4. `status`:
+   - A module containing HTTP status code constants (`status.HTTP_200_OK`, `status.HTTP_201_CREATED`, `status.HTTP_401_UNAUTHORIZED`, etc.).
+   - Eliminates "magic numbers" in code and improves readability.
+5. `Response`:
+   - Represents the outgoing HTTP response object.
+   - Usecase: Used to control response metadata, such as setting cookies (`response.set_cookie()`), deleting cookies (`response.delete_cookie()`), setting custom headers, or changing the status code dynamically.
+6. `Cookie`:
+   - A parameter helper that instructs FastAPI to extract a specific cookie value directly from the incoming request's `Cookie` HTTP header.
+
+
+Q5. What is `Session` in `sqlalchemy.orm` and what is its usecase?
+- A `Session` is SQLAlchemy's workspace/staging area for all database operations.
+- It implements two famous enterprise design patterns:
+  1. Unit of Work: Tracks all changes (`db.add()`, `db.delete()`) in memory until `db.commit()` writes them all at once in an atomic transaction.
+  2. Identity Map: Guarantees that each database row is loaded into Python memory only once per session, preventing duplicate conflicting objects.
+- Key Methods:
+  - `db.query(Model)`: Builds SQL SELECT queries.
+  - `db.add(object)`: Stages a new record for insertion.
+  - `db.commit()`: Permanently writes pending changes to the database.
+  - `db.rollback()`: Cancels all pending changes if an error occurs.
+  - `db.close()`: Releases the database connection back to the connection pool.
+
+
+Q6. What is meant by `Base.metadata.create_all(bind=engine)`?
+- `Base`: The declarative base class that all ORM models inherit from (`class User(Base):`, `class RefreshToken(Base):`).
+- `metadata`: A catalog/registry that stores definitions of all tables, columns, indexes, and foreign keys defined in Python models.
+- `create_all(bind=engine)`:
+  - Inspects the database and issues `CREATE TABLE IF NOT EXISTS` for any registered model that does not yet exist in MySQL.
+  - Note: It does NOT modify or alter existing tables. For adding columns to existing tables, migration tools like Alembic are used.
+
+
+Q7. What is meant by `app.include_router(auth.router)`?
+- Mounts all endpoints registered inside `auth.router` onto the main FastAPI application instance (`app`).
+- Enables modular, clean architecture: keeps `main.py` minimal while organizing code into domain-specific router files.
+- Automatically inherits router-level prefixes (e.g. `/auth/register`, `/auth/login`) and Swagger UI tags.
+
+
+Q8. What are `HTTPBearer` and `HTTPAuthorizationCredentials` in `fastapi.security`?
+- `HTTPBearer`:
+  - A security scheme that enforces standard HTTP Bearer token authentication (RFC 6750).
+  - Inspects the incoming request's `Authorization` header for `Bearer <token>`.
+  - If the header is missing or improperly formatted, it immediately rejects the request with `HTTP 401 Unauthorized`.
+  - In Swagger UI (`/docs`), it creates the clean "Authorize" modal with a simple "Value: [paste token]" box.
+- `HTTPAuthorizationCredentials`:
+  - The object injected into the dependency function by `Depends(security)`.
+  - Contains two properties:
+    1. `.scheme`: The string `"Bearer"`.
+    2. `.credentials`: The raw JWT token string (e.g. `"eyJhbGciOi..."`) ready to be decoded.

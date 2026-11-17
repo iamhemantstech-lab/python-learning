@@ -1,0 +1,368 @@
+# Generates high-resolution Master Architecture Overview diagram
+import os
+import subprocess
+
+html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  body {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 30px;
+    width: 1200px;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 25px;
+    border-bottom: 2px solid #1e293b;
+    padding-bottom: 18px;
+  }
+  .header h1 {
+    font-size: 28px;
+    color: #38bdf8;
+    margin-bottom: 6px;
+    letter-spacing: -0.5px;
+  }
+  .header p {
+    font-size: 14px;
+    color: #94a3b8;
+  }
+  .actors-container {
+    display: grid;
+    grid-template-columns: 220px 280px 320px 260px;
+    gap: 20px;
+    margin-bottom: 20px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .actor-card {
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 14px;
+    text-align: center;
+    border: 1px solid #334155;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  }
+  .actor-card.user { border-top: 4px solid #a855f7; }
+  .actor-card.frontend { border-top: 4px solid #06b6d4; }
+  .actor-card.backend { border-top: 4px solid #10b981; }
+  .actor-card.db { border-top: 4px solid #f59e0b; }
+  
+  .actor-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .actor-card.user .actor-title { color: #c084fc; }
+  .actor-card.frontend .actor-title { color: #22d3ee; }
+  .actor-card.backend .actor-title { color: #34d399; }
+  .actor-card.db .actor-title { color: #fbbf24; }
+  .actor-subtitle { font-size: 12px; color: #94a3b8; }
+
+  .phase-section {
+    background: #1e293b;
+    border-radius: 14px;
+    margin-bottom: 18px;
+    border: 1px solid #334155;
+    overflow: hidden;
+  }
+  .phase-header {
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .phase-1 .phase-header { background: #3b0764; color: #d8b4fe; border-bottom: 1px solid #581c87; }
+  .phase-2 .phase-header { background: #083344; color: #67e8f9; border-bottom: 1px solid #155e75; }
+  .phase-3 .phase-header { background: #064e3b; color: #6ee7b7; border-bottom: 1px solid #047857; }
+  .phase-4 .phase-header { background: #451a03; color: #fde047; border-bottom: 1px solid #78350f; }
+  .phase-5 .phase-header { background: #4c0519; color: #fda4af; border-bottom: 1px solid #881337; }
+
+  .phase-body {
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .step-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    background: #0f172a;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border-left: 3px solid #64748b;
+  }
+  .step-row.req { border-left-color: #38bdf8; }
+  .step-row.res { border-left-color: #10b981; }
+  .step-row.action { border-left-color: #f59e0b; }
+  .step-row.err { border-left-color: #ef4444; }
+
+  .step-num {
+    background: #334155;
+    color: #f8fafc;
+    font-weight: 700;
+    font-size: 11px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .step-badge {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .badge-post { background: #1d4ed8; color: #dbeafe; }
+  .badge-get { background: #047857; color: #d1fae5; }
+  .badge-status { background: #065f46; color: #a7f3d0; }
+  .badge-warn { background: #854d0e; color: #fef08a; }
+  .badge-err { background: #991b1b; color: #fecaca; }
+  .badge-internal { background: #475569; color: #e2e8f0; }
+
+  .step-route { font-family: monospace; font-weight: 600; color: #38bdf8; }
+  .step-desc { flex-grow: 1; color: #cbd5e1; }
+  .step-tag { font-size: 11px; color: #94a3b8; background: #1e293b; padding: 2px 8px; border-radius: 4px; }
+
+  .footer-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    margin-top: 18px;
+  }
+  .summary-box {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .summary-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .summary-box.speed .summary-title { color: #34d399; }
+  .summary-box.security .summary-title { color: #38bdf8; }
+  .summary-box.control .summary-title { color: #f59e0b; }
+  .summary-text { font-size: 12px; color: #94a3b8; line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>FastAPI + JWT Master Architecture Overview</h1>
+  <p>End-to-End Authentication & Dual-Token (Access + Refresh) Lifecycle</p>
+</div>
+
+<div class="actors-container">
+  <div class="actor-card user">
+    <div class="actor-title">👤 User</div>
+    <div class="actor-subtitle">End User / Browser / App</div>
+  </div>
+  <div class="actor-card frontend">
+    <div class="actor-title">💻 Frontend</div>
+    <div class="actor-subtitle">React / Vue / Axios / Mobile</div>
+  </div>
+  <div class="actor-card backend">
+    <div class="actor-title">⚡ FastAPI Backend</div>
+    <div class="actor-subtitle">Routers, Services & JWT Engine</div>
+  </div>
+  <div class="actor-card db">
+    <div class="actor-title">🗄️ MySQL Database</div>
+    <div class="actor-subtitle">Users & Refresh Tokens Tables</div>
+  </div>
+</div>
+
+<!-- PHASE 1 -->
+<div class="phase-section phase-1">
+  <div class="phase-header">
+    <span>Phase 1: Registration Flow</span>
+    <span style="font-size:11px;">Create New User Account</span>
+  </div>
+  <div class="phase-body">
+    <div class="step-row req">
+      <div class="step-num">1</div>
+      <div class="step-badge badge-post">POST</div>
+      <div class="step-route">/auth/register</div>
+      <div class="step-desc">Frontend sends JSON body: <code>{name, email, password}</code></div>
+      <div class="step-tag">UserRegister Schema</div>
+    </div>
+    <div class="step-row action">
+      <div class="step-num">2</div>
+      <div class="step-badge badge-internal">SECURITY</div>
+      <div class="step-desc">FastAPI hashes plain password using <b>Argon2id</b> (<code>pwdlib</code>) & commits to MySQL</div>
+      <div class="step-tag">INSERT INTO users</div>
+    </div>
+    <div class="step-row res">
+      <div class="step-num">3</div>
+      <div class="step-badge badge-status">HTTP 201</div>
+      <div class="step-desc">FastAPI filters password out via <code>RegisterResponse</code> and returns safe user profile</div>
+      <div class="step-tag">Password Never Returned</div>
+    </div>
+  </div>
+</div>
+
+<!-- PHASE 2 -->
+<div class="phase-section phase-2">
+  <div class="phase-header">
+    <span>Phase 2: Login & Dual-Token Issuance</span>
+    <span style="font-size:11px;">15-Min Access Token + 7-Day Refresh Token</span>
+  </div>
+  <div class="phase-body">
+    <div class="step-row req">
+      <div class="step-num">4</div>
+      <div class="step-badge badge-post">POST</div>
+      <div class="step-route">/auth/login</div>
+      <div class="step-desc">Frontend sends credentials: <code>{email, password}</code></div>
+      <div class="step-tag">UserLogin Schema</div>
+    </div>
+    <div class="step-row action">
+      <div class="step-num">5</div>
+      <div class="step-badge badge-internal">VERIFY</div>
+      <div class="step-desc">FastAPI verifies Argon2 hash in DB, creates <b>Access Token (15m)</b> + <b>Refresh Token (7d)</b></div>
+      <div class="step-tag">Save Refresh Token in MySQL</div>
+    </div>
+    <div class="step-row res">
+      <div class="step-num">6</div>
+      <div class="step-badge badge-status">HTTP 200</div>
+      <div class="step-desc">Returns <code>{access_token, refresh_token, token_type: "bearer"}</code>. Frontend stores securely</div>
+      <div class="step-tag">Memory / HttpOnly Cookie</div>
+    </div>
+  </div>
+</div>
+
+<!-- PHASE 3 -->
+<div class="phase-section phase-3">
+  <div class="phase-header">
+    <span>Phase 3: Accessing Protected Routes (Fast & Stateless)</span>
+    <span style="font-size:11px;">Minutes 0 to 15 (Normal Usage)</span>
+  </div>
+  <div class="phase-body">
+    <div class="step-row req">
+      <div class="step-num">7</div>
+      <div class="step-badge badge-get">GET</div>
+      <div class="step-route">/auth/me</div>
+      <div class="step-desc">Frontend attaches header: <code>Authorization: Bearer &lt;access_token&gt;</code></div>
+      <div class="step-tag">HTTPBearer Extractor</div>
+    </div>
+    <div class="step-row action">
+      <div class="step-num">8</div>
+      <div class="step-badge badge-internal">VERIFY</div>
+      <div class="step-desc"><code>HTTPBearer</code> & <code>decode_access_token</code> verify JWT signature in memory (Zero DB overhead)</div>
+      <div class="step-tag">⚡ Verified in Microseconds</div>
+    </div>
+    <div class="step-row res">
+      <div class="step-num">9</div>
+      <div class="step-badge badge-status">HTTP 200</div>
+      <div class="step-desc">FastAPI returns requested user profile / protected data to frontend</div>
+      <div class="step-tag">UserResponse Model</div>
+    </div>
+  </div>
+</div>
+
+<!-- PHASE 4 -->
+<div class="phase-section phase-4">
+  <div class="phase-header">
+    <span>Phase 4: Silent Token Refresh (The Magic Moment)</span>
+    <span style="font-size:11px;">Triggered Automatically When 15-Min Token Expires</span>
+  </div>
+  <div class="phase-body">
+    <div class="step-row err">
+      <div class="step-num">10</div>
+      <div class="step-badge badge-err">HTTP 401</div>
+      <div class="step-desc">At min 16, request to <code>/auth/me</code> fails with <code>401 Unauthorized ("Token expired")</code></div>
+      <div class="step-tag">Access Token Expired</div>
+    </div>
+    <div class="step-row req">
+      <div class="step-num">11</div>
+      <div class="step-badge badge-post">POST</div>
+      <div class="step-route">/auth/refresh</div>
+      <div class="step-desc"><b>Axios Interceptor</b> catches 401 silently and sends Refresh Token to get a fresh Access Token</div>
+      <div class="step-tag">Silent Refresh Behind Scenes</div>
+    </div>
+    <div class="step-row action">
+      <div class="step-num">12</div>
+      <div class="step-badge badge-warn">DB CHECK</div>
+      <div class="step-desc">FastAPI checks MySQL: <i>Is refresh_token valid and not revoked?</i> If valid, generates new Access Token</div>
+      <div class="step-tag">SELECT FROM refresh_tokens</div>
+    </div>
+    <div class="step-row res">
+      <div class="step-num">13</div>
+      <div class="step-badge badge-status">HTTP 200</div>
+      <div class="step-desc">Frontend receives new 15-min Access Token & <b>automatically retries original request</b>. User sees no disruption!</div>
+      <div class="step-tag">Zero User Friction ✨</div>
+    </div>
+  </div>
+</div>
+
+<!-- PHASE 5 -->
+<div class="phase-section phase-5">
+  <div class="phase-header">
+    <span>Phase 5: Logout & Revocation</span>
+    <span style="font-size:11px;">Instant Invalidation</span>
+  </div>
+  <div class="phase-body">
+    <div class="step-row req">
+      <div class="step-num">14</div>
+      <div class="step-badge badge-post">POST</div>
+      <div class="step-route">/auth/logout</div>
+      <div class="step-desc">User clicks "Log Out" $\\rightarrow$ Frontend sends Refresh Token to logout endpoint</div>
+      <div class="step-tag">Terminate Session</div>
+    </div>
+    <div class="step-row action">
+      <div class="step-num">15</div>
+      <div class="step-badge badge-err">REVOKE</div>
+      <div class="step-desc">FastAPI marks <code>is_revoked = True</code> or deletes token from MySQL. Frontend clears storage</div>
+      <div class="step-tag">Token Permanently Killed 🔒</div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer-summary">
+  <div class="summary-box speed">
+    <div class="summary-title">⚡ 1. High Performance</div>
+    <div class="summary-text">99% of requests use the 15-min Access Token verified in memory in microseconds with zero database queries.</div>
+  </div>
+  <div class="summary-box security">
+    <div class="summary-title">🛡️ 2. Maximum Security</div>
+    <div class="summary-text">If an access token leaks, it dies in 15 minutes. Passwords hashed with state-of-the-art Argon2id.</div>
+  </div>
+  <div class="summary-box control">
+    <div class="summary-title">🔒 3. Total Revocation Control</div>
+    <div class="summary-text">Because refresh tokens live in MySQL, you can force logouts, support multiple devices, and kill stolen tokens.</div>
+  </div>
+</div>
+
+</body>
+</html>
+"""
+
+html_path = r"c:\Users\ADMIN\Documents\hemant-python\authentication_demo\master_architecture_overview.html"
+png_path = r"c:\Users\ADMIN\Documents\hemant-python\authentication_demo\master_architecture_overview.png"
+
+with open(html_path, "w", encoding="utf-8") as f:
+    f.write(html_content)
+
+print(f"HTML diagram written to {html_path}")
+
+# Run headless Chrome to render 1200px crisp image
+chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+cmd = f'"{chrome_path}" --headless --disable-gpu --window-size=1200,1650 --screenshot="{png_path}" "{html_path}"'
+
+res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+print("Chrome execution finished:", res.returncode)
+if os.path.exists(png_path):
+    print(f"PNG image generated successfully at {png_path} (Size: {os.path.getsize(png_path)} bytes)")
+else:
+    print("Failed to generate PNG image.")

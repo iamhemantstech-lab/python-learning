@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     # JWT Security Settings
     SECRET_KEY: str = "dTmD3lb2ooG2jz3L6dG34W2kbIwP1rm0"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 3
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
 
     model_config = SettingsConfigDict(

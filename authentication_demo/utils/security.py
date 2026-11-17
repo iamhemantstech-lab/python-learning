@@ -27,12 +27,31 @@ def create_access_token(data:dict) -> str:
     to_encode.update({"exp":expiry_time})
 
     token = jwt.encode(
+        to_encode, # payload
+        settings.SECRET_KEY, # secret key
+        algorithm=settings.ALGORITHM # header - PyJWT uses THIS parameter to build the header {"alg": "HS256", "typ": "JWT"} is the exact standard
+    )
+
+    return token
+
+
+# create jwt refresh token (Long-lived, e.g. 7 days)
+def create_refresh_token(data: dict) -> tuple[str, datetime]:
+    to_encode = data.copy()
+
+    expiry_time = datetime.now(timezone.utc) + timedelta(
+        days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+    )
+
+    to_encode.update({"exp": expiry_time, "type": "refresh"})
+
+    token = jwt.encode(
         to_encode,
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM
     )
 
-    return token
+    return token, expiry_time
 
 
 # decode and verify jwt access token
