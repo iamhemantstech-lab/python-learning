@@ -38,3 +38,70 @@ def list_orders(
     query = query.offset(skip).limit(limit)
 
     return session.exec(query).all()
+
+@router.get("/{order_id}", response_model=Order)
+def get_order_detail(order_id: int, session: Session = Depends(get_session)):
+    """Fetch details for a single order by its ID."""
+    order = session.get(Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order with ID {order_id} not found")
+    
+    return order
+
+@router.patch("/{order_id}", response_model=Order)
+def update_order(order_id: int, order_update: OrderUpdate, session: Session = Depends(get_session)):
+    """Partially update an existing order's status or delivery address."""
+    db_order = session.get(Order, order_id)
+
+    if not db_order:
+        raise HTTPException(status_code=404, detail=f"Order with ID {order_id} not found")
+
+    old_status = db_order.status
+    update_data = order_update.model_dump(exclude_unset=True) # Extract ONLY fields that the client sent
+
+    db_order.sqlmodel_update(update_data) # Apply the changes to the database model
+    db_order.updated_at = datetime.now() # Update the modified timestamp
+
+    # If status changed, record an audit entry in StatusLog
+    if order_update.status and order_update.status != old_status:
+        log = StatusLog(
+            order_id=db_order.id,
+            old_status=old_status.value if hasattr(old_status, "value") else str(old_status),
+            new_status=order_update.status.value if hasattr(order_update.status, "value") else str(order_update.status),
+        )
+        session.add(log)
+
+    session.add(db_order)
+    session.commit()
+    session.refresh(db_order)
+
+    return db_order
+
+
+@router.get("/{order_id}/timeline", response_model=list[StatusLog])
+def get_order_timeline(order_id: int, session: Session = Depends(get_session)):
+    """Fetch the delivery history timeline for an order."""
+    db_order = session.get(Order, order_id)
+    if not db_order:
+        raise HTTPException(status_code=404, detail=f"Order with ID {order_id} not found")
+
+    query = select(StatusLog).where(StatusLog.order_id == order_id).order_by(StatusLog.changed_at)
+    return session.exec(query).all()
+
+
+@router.delete("/{order_id}")
+def delete_order(order_id: int, session: Session = Depends(get_session)):
+    """Cancel and delete an order and its associated status logs."""
+    order = session.get(Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order with ID {order_id} not found")
+
+    # Clean up associated child logs first to avoid orphaned records
+    logs = session.exec(select(StatusLog).where(StatusLog.order_id == order_id)).all()
+    for log in logs:
+        session.delete(log)
+
+    session.delete(order)
+    session.commit()
+
+    return {"message": f"Order with ID {order_id} deleted successfully"}

@@ -167,6 +167,134 @@ def list_orders(
 
 ---
 
+### Part D: `get_order_detail` (`GET /orders/{order_id}`)
+```python
+@router.get("/{order_id}", response_model=Order)
+def get_order_detail(order_id: int, session: Session = Depends(get_session)):
+    """Fetch details for a single order by its ID."""
+    order = session.get(Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order with ID {order_id} not found")
+    
+    return order
+```
+
+#### Step-by-Step Mechanics:
+1. **Path Parameter Parsing (`order_id: int`):**
+   * FastAPI extracts `order_id` directly from the URL path (`/orders/1`).
+   * It validates that `order_id` is an integer. If someone passes `/orders/abc`, FastAPI immediately returns `422 Unprocessable Entity` before touching the database.
+2. **Primary Key Lookup (`session.get(Order, order_id)`):**
+   * Directly fetches the record by its primary key.
+   * Returns `None` if no matching row exists.
+3. **HTTP 404 Guard Clause:**
+   * If `order is None`, raises `HTTPException(status_code=404, detail=...)`.
+   * FastAPI halts execution and formats a clean JSON response: `{"detail": "Order with ID 999 not found"}`.
+
+---
+
+### Part E: `update_order` (`PATCH /orders/{order_id}`)
+```python
+@router.patch("/{order_id}", response_model=Order)
+def update_order(
+    order_id: int, 
+    order_update: OrderUpdate, 
+    session: Session = Depends(get_session)
+):
+    """Partially update an existing order's status or delivery address."""
+    db_order = session.get(Order, order_id)
+    if not db_order:
+        raise HTTPException(status_code=404, detail=f"Order with ID {order_id} not found")
+
+    old_status = db_order.status
+    update_data = order_update.model_dump(exclude_unset=True)
+
+    db_order.sqlmodel_update(update_data)
+    db_order.updated_at = datetime.now()
+
+    # If status changed, record an audit entry in StatusLog
+    if order_update.status and order_update.status != old_status:
+        log = StatusLog(
+            order_id=db_order.id,
+            old_status=old_status.value if hasattr(old_status, "value") else str(old_status),
+            new_status=order_update.status.value if hasattr(order_update.status, "value") else str(order_update.status),
+        )
+        session.add(log)
+
+    session.add(db_order)
+    session.commit()
+    session.refresh(db_order)
+
+    return db_order
+```
+
+#### Step-by-Step Mechanics:
+1. **The `PATCH` Contract:**
+   * Unlike `PUT` (which replaces the entire record), `PATCH` modifies only the attributes explicitly provided in the request body.
+2. **The `exclude_unset=True` Filter:**
+   * In `OrderUpdate`, both `status` and `delivery_address` default to `None`.
+   * If a client sends only `{"status": "picked_up"}`, normal `model_dump()` would yield `{"status": "picked_up", "delivery_address": None}`, which would overwrite the user's real address with `None`!
+   * `exclude_unset=True` ensures only fields explicitly present in the incoming payload are included in `update_data`.
+3. **Audit Trail Generation (`StatusLog`):**
+   * Before applying the update, we capture `old_status = db_order.status`.
+   * If `order_update.status` differs from `old_status`, a `StatusLog` instance is created and staged via `session.add(log)`.
+   * Both `db_order` and `log` are committed in the **same atomic database transaction** (`session.commit()`).
+4. **Timestamp Refresh (`db_order.updated_at = datetime.now()`):**
+   * Manually refreshes the modification timestamp so frontend applications can see when the status last transitioned.
+
+---
+
+### Part F: `get_order_timeline` (`GET /orders/{order_id}/timeline`)
+```python
+@router.get("/{order_id}/timeline", response_model=list[StatusLog])
+def get_order_timeline(order_id: int, session: Session = Depends(get_session)):
+    """Fetch the delivery history timeline for an order."""
+    db_order = session.get(Order, order_id)
+    if not db_order:
+        raise HTTPException(status_code=404, detail=f"Order with ID {order_id} not found")
+
+    query = select(StatusLog).where(StatusLog.order_id == order_id).order_by(StatusLog.changed_at)
+    return session.exec(query).all()
+```
+
+#### Step-by-Step Mechanics:
+1. **Existence Verification:**
+   * First checks if the order exists with `session.get(Order, order_id)`. If missing, raises a clean `404 Not Found`.
+2. **Chronological Sorting (`.order_by(StatusLog.changed_at)`):**
+   * Returns transitions from oldest to newest, allowing frontend clients to render a step-by-step delivery progress bar.
+
+---
+
+### Part G: `delete_order` (`DELETE /orders/{order_id}`)
+```python
+@router.delete("/{order_id}")
+def delete_order(order_id: int, session: Session = Depends(get_session)):
+    """Cancel and delete an order and its associated status logs."""
+    order = session.get(Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order with ID {order_id} not found")
+
+    # Clean up associated child logs first to avoid orphaned records
+    logs = session.exec(select(StatusLog).where(StatusLog.order_id == order_id)).all()
+    for log in logs:
+        session.delete(log)
+
+    session.delete(order)
+    session.commit()
+
+    return {"message": f"Order with ID {order_id} deleted successfully"}
+```
+
+#### Step-by-Step Mechanics:
+1. **Cascade Cleanup:**
+   * In relational databases, deleting a parent row whose primary key is referenced by foreign keys in a child table can cause foreign key violation errors or leave orphaned records.
+   * We proactively fetch and delete all `StatusLog` records associated with `order_id` before deleting the `order` itself.
+2. **`session.delete()`:**
+   * Marks the entity for deletion from the persistent store during the next `commit()`.
+3. **Response:**
+   * Returns an informative JSON confirmation acknowledging the cancellation.
+
+---
+
 ## 5. Common Bugs & Pitfalls (What We Fixed)
 
 | Bug | What Happened | How It Was Solved |
@@ -190,3 +318,19 @@ def list_orders(
 
 ### Q4: What is the difference between `model_dump()` and `model_dump_json()` in Pydantic v2?
 > **Answer:** *"`model_dump()` returns a native Python dictionary with Python types intact (e.g. `datetime` objects and Enums). `model_dump_json()` returns a raw JSON-encoded string where all types are converted to string primitives."*
+
+### Q5: Why use `session.get(Order, order_id)` instead of `session.exec(select(Order).where(Order.id == order_id)).first()`?
+> **Answer:** *"1. **Identity Map Caching:** `session.get()` first checks the SQLAlchemy Session's internal memory (Identity Map). If the entity was already queried in the same session, it returns it instantly without making a network round-trip to the database.*  
+> *2. **Readability & Intent:** It clearly expresses the intent: 'Retrieve a single entity by its primary key', returning `None` directly if absent, making 404 guards simple and clean."*
+
+### Q6: What is the difference between `PUT` and `PATCH` in REST APIs?
+> **Answer:** *"**`PUT`** is idempotent full replacement: the client must supply the complete representation of the entity; any omitted attributes are reset to null or defaults. **`PATCH`** is partial modification: the client only transmits the delta (the specific attributes being updated), leaving all other existing properties untouched."*
+
+### Q7: Why is `exclude_unset=True` critical when doing partial updates with Pydantic?
+> **Answer:** *"If an update schema defines optional fields defaulting to `None` (e.g. `delivery_address: str | None = None`), calling plain `model_dump()` will output `{"delivery_address": None}` even if the caller only intended to update `status`. Passing this dictionary to the database model will unintentionally erase the existing address. `exclude_unset=True` ensures only the fields explicitly provided in the request payload are serialized into the dictionary."*
+
+### Q8: How do you guarantee atomic consistency between order status changes and audit log entries?
+> **Answer:** *"By staging both the updated `Order` instance (`session.add(db_order)`) and the new `StatusLog` instance (`session.add(log)`) inside the same Unit of Work before issuing `session.commit()`. Both operations are bundled into a single database transaction. If the database crashes or an error occurs during commit, both writes roll back together, preventing orphaned status changes or desynchronized audit logs."*
+
+### Q9: What is the architectural difference between 'Hard Delete' and 'Soft Delete'?
+> **Answer:** *"**Hard Delete** (`session.delete(entity)`) physically removes the row from the database file on disk. Once committed, the record cannot be recovered without a database backup. **Soft Delete** leaves the row in the database but flips a flag (e.g. `is_deleted: bool = True` or `status: OrderStatus = OrderStatus.CANCELLED`). Soft Delete preserves audit trails, financial history, and business metrics, but requires filtering out deleted rows (`where(Order.is_deleted == False)`) in all subsequent queries."*

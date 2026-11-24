@@ -36,9 +36,10 @@ class OrderUpdate(SQLModel):
     delivery_address: Optional[str] = None
 
 
-# Response model
-class StatusLog(SQLModel):
-    order_id: int
+# Database table for tracking order status transitions (Audit Log)
+class StatusLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    order_id: int = Field(foreign_key="order.id")
     old_status: str
     new_status: str
-    changed_at: datetime
+    changed_at: NaiveDatetime = Field(default_factory=datetime.now)

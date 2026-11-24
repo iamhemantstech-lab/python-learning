@@ -103,15 +103,18 @@ class OrderUpdate(SQLModel):
 ```
 * Every field is `Optional = None` to support partial updates (`PATCH`).
 
-#### 3. `StatusLog` (Response Model)
+#### 3. `StatusLog` (Database Table / Audit Log)
 ```python
-class StatusLog(SQLModel):
-    order_id: int
+class StatusLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    order_id: int = Field(foreign_key="order.id")
     old_status: str
     new_status: str
-    changed_at: datetime
+    changed_at: NaiveDatetime = Field(default_factory=datetime.now)
 ```
-* Response schema for delivery tracking history.
+* **`table=True`:** Persists status transitions directly in SQLite for permanent delivery history.
+* **`foreign_key="order.id"`:** Enforces relational integrity linking each audit event directly to its parent `Order`.
+* **`default_factory=datetime.now`:** Auto-records the exact moment the transition occurred.
 
 ---
 

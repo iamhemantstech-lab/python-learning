@@ -37,6 +37,8 @@ This API digitizes that delivery lifecycle:
               ▼
  [2. OPERATIONS & METRICS]
  GET /orders/?status=preparing   ──► Find pending dabbas
+ PATCH /orders/1                 ──► Update status & record audit log
+ GET /orders/1/timeline          ──► Live package tracking history
  GET /stats/daily                ──► Daily volume & status counts
 ```
 
@@ -45,7 +47,8 @@ This API digitizes that delivery lifecycle:
 ## ✨ 3. Core Features
 
 * **⚡ Unified Model Architecture:** Uses **SQLModel** (combining SQLAlchemy + Pydantic) to eliminate duplicate code for tables and validation.
-* **📦 Order Management:** Create orders, list orders, and filter by status (`preparing`, `picked_up`, `in_transit`, `delivered`).
+* **📦 Order Management:** Create, lookup, update, and filter orders by status (`preparing`, `picked_up`, `in_transit`, `delivered`).
+* **⏱️ Delivery Timeline & Audit Trail:** Persistent `StatusLog` table recording state transitions with atomic database transaction guarantees.
 * **📅 Date Range Filtering:** Automatically captures 24-hour single-day ranges using `datetime.combine()`.
 * **🛡️ Defensive Pagination:** Built-in limits (`ge=1, le=100`) preventing server memory exhaustion.
 * **📊 Optimized Analytics:** Database-level aggregations (`func.count()`) in $O(1)$ memory.
@@ -72,22 +75,26 @@ This API digitizes that delivery lifecycle:
 | `GET` | `/health` | Server health check (`{"status": "ok"}`) | ✅ Live |
 | `POST` | `/orders/` | Creates a new order (defaults to `preparing`) | ✅ Live |
 | `GET` | `/orders/` | Lists orders with filters (`?status=`, `?created_date=`, `?skip=`, `?limit=`) | ✅ Live |
+| `GET` | `/orders/{order_id}` | Retrieves details for a single order by ID | ✅ Live |
+| `PATCH` | `/orders/{order_id}` | Partially updates order status or address & logs audit entry | ✅ Live |
+| `GET` | `/orders/{order_id}/timeline` | Returns chronological status transition timeline for an order | ✅ Live |
+| `DELETE` | `/orders/{order_id}` | Cancels and permanently deletes an order and associated logs | ✅ Live |
 | `GET` | `/stats/daily` | Returns daily summary aggregated by status (`?summary_date=`) | ✅ Live |
 
 ---
 
-## 🔮 6. Upcoming Feature Development (Roadmap)
+## 🔮 6. Feature Development Roadmap (100% Completed)
 
-The following features have their schemas prepared in [models.py](file:///c:/Users/ADMIN/Documents/hemant-python/Dabbewala-FastAPI/models.py) and are queued for implementation:
+All core lifecycle features have their schemas prepared in [models.py](file:///c:/Users/ADMIN/Documents/hemant-python/Dabbewala-FastAPI/models.py) and are fully implemented:
 
-- [ ] **Single Order Lookup (`GET /orders/{order_id}`)**:
+- [x] **Single Order Lookup (`GET /orders/{order_id}`)**:
   - Retrieve details for a specific order by ID with `404 Not Found` handling.
-- [ ] **Partial Order Updates (`PATCH /orders/{order_id}`)**:
+- [x] **Partial Order Updates (`PATCH /orders/{order_id}`)**:
   - Uses `OrderUpdate` (`status`, `delivery_address`) with `exclude_unset=True` to update fields without overwriting unchanged data.
-- [ ] **Delivery Timeline & Audit Logging (`StatusLog`)**:
-  - Track delivery state changes (`old_status` $\rightarrow$ `new_status`, `changed_at`) for live package tracking history.
-- [ ] **Order Cancellation (`DELETE /orders/{order_id}`)**:
-  - Soft-delete or remove cancelled orders from active delivery runs.
+- [x] **Delivery Timeline & Audit Logging (`StatusLog`)**:
+  - Track delivery state changes (`old_status` $\rightarrow$ `new_status`, `changed_at`) for live package tracking history via `GET /orders/{order_id}/timeline`.
+- [x] **Order Cancellation (`DELETE /orders/{order_id}`)**:
+  - Remove cancelled orders and associated audit logs with child cleanup.
 
 ---
 
