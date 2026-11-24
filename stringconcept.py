@@ -24,6 +24,19 @@ final_string= s1 + " " + s2
 # start: Index from where slicing begins (included)
 # end: Index where slicing stops (excluded)
 # step: How many positions to skip
-print("slicing: ", s1[:0])
+# print("slicing: ", s1[:0])
 
-print("find function: ", final_string.find("l"))
+# print("find function: ", final_string.find("l"))
+
+greet_msg = ["Hello", "Good", "Morning", "Hemant", "Sonar"]
+fname = "Hemant"
+lname = "Sonar"
+msg = "Hello, Good Morning {} {}."
+# print(msg.format(fname, lname))
+
+# convert list into the string
+# print("-".join(greet_msg))
+
+# print letter
+# for letter in msg:
+#     print(letter)

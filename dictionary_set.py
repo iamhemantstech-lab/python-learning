@@ -21,19 +21,38 @@ dict["email"] = "temp@mail.com"
 # print(dict["sub_dict"]["gender"])
 # print(dict)
 
+person = {
+    "name": "Rohan",
+    "age": 25,
+    "city": "Surat"
+}
+person["mobile"] = "9638527410"
 
-# Set: Set is the collection of unordered items.
+# for key in person:
+#     print(key, "-" , person[key])
+# print("="*50)
+# for key, value in person.items():
+#     print(key, "-> ", value)
+
+
+# squared_num_dict = {k:k**2 for k in range(10)}
+# print(squared_num_dict)
+
+
+# ======================================== Set: Set is the collection of unordered items. ===========================================
 # removed duplicates items mustbe unique
 # each element in the set is a immutable - we can not change the value of element in set
 # set is mutable - we can add, remove element in set
 
 collection = {3,4,8,1,3,2,8}
-empty_set = set() # create a empty set
-collection.add(10)
-collection.add((11,13))
-collection.remove(8) # remove specific element
-collection.pop() # remove random value
+# empty_set = set() # create a empty set
+# collection.add(10)
+# collection.add((11,13))
+# collection.remove(8) # remove specific element
+# collection.pop() # remove random value
 # print(collection)
+# print(collection & {1,8,3} ) # intersection
+# print(collection | {1,8,3} ) # union
 
 
 # task

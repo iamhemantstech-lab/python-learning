@@ -75,3 +75,18 @@ multiline comment
 # print("userInputCityCode: ", userInputCityCode, "type: ", type(userInputCityCode))
 
 
+# =============================================================================================================
+# == -> Checks if the values are equal
+# is -> Checks if both variables point to the same memory address
+
+o=(23,)
+s=(23,)
+print(o == s)
+print(o is s)
+
+# Why o is s is True Here
+# • Small Integer Caching: Python caches integers from -5 to 256 when the interpreter starts up to save memory and speed up execution.
+# • Shared Memory Address: Because 23 falls inside that cached range, Python does not create two separate 23 objects. Instead, it points both o and s to the exact same pre-existing 23 in memory (id(o) == id(s)).
+# Avoid "is" for numbers and strings.
+
+

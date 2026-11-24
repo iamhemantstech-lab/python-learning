@@ -20,8 +20,11 @@ myList.insert(3, "user") # insert element at index
 # print(list)
 
 
+cube_num = [x**3 for x in range(5)]
+# print(cube_num)
 
-# Tuple = tuple is built in data type to store values
+
+# ====================================================== Tuple = tuple is built in data type to store values ====================================================
 # tuple is immutable means we can not change it
 myTuple = (3,5,2,1,5,7,0)
 
@@ -56,10 +59,10 @@ palStr = ["m","a","m",]
 shallow_copy = palStr.copy()  # copy create a shallow copy of list
 shallow_copy.reverse()
 
-print(palStr,  shallow_copy)
+# print(palStr,  shallow_copy)
 
-if(palStr == shallow_copy):
-    print("palindrom")
-else:
-    print("not palindrom")
+# if(palStr == shallow_copy):
+#     print("palindrom")
+# else:
+#     print("not palindrom")
 
